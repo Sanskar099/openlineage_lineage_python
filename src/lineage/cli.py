@@ -19,6 +19,15 @@ def _read_text(path: Path) -> str:
 
 
 def main() -> int:
+    """SAMPLE CLI INPUT:
+    python generate_lineage.py \
+--sql query.sql \
+--source-ddl customer.sql \
+--source-ddl orders.sql \
+--target-ddl report.sql \
+--namespace prod \
+--dialect postgres \
+--job-name customer-etl"""
     parser = argparse.ArgumentParser(description="Generate an OpenLineage event from SQL and table DDL")
     parser.add_argument("--sql", required=True, type=Path, help="SQL file containing one SELECT statement")
     parser.add_argument(

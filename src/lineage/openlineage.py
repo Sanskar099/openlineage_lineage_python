@@ -34,7 +34,7 @@ def build_event(
                 field=source.column,
                 transformations=[
                     column_lineage_dataset.Transformation(
-                        type="DIRECT",
+                        type="DIRECT" if mapping.is_direct else "INDIRECT",
                         description=mapping.expression,
                     )
                 ],

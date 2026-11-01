@@ -61,7 +61,7 @@ def test_builds_sdk_serialized_openlineage_event():
         "name": "raw.orders",
         "namespace": "demo.local",
         "transformations": [
-            {"description": "SUM(o.amount)", "type": "DIRECT"}
+            {"description": "SUM(o.amount)", "type": "INDIRECT"}
         ],
     }
 
@@ -78,13 +78,122 @@ def test_rejects_ambiguous_unqualified_column():
         )
 
 
-def test_rejects_wildcard_projection():
+def test_expands_wildcard_projection_from_source_schema():
     target = parse_create_table("CREATE TABLE out_table (id INTEGER)", "postgres")
 
-    with pytest.raises(LineageError, match="Wildcard"):
-        derive_column_lineage(
-            "SELECT * FROM source_table",
-            {"source_table": ("id",)},
-            target,
-            "postgres",
+    result = derive_column_lineage(
+        "SELECT * FROM source_table",
+        {"source_table": ("id",)},
+        target,
+        "postgres",
+    )
+
+    assert result.columns[0].target_column == "id"
+    assert [(source.table, source.column) for source in result.columns[0].source_columns] == [
+        ("source_table", "id")
+    ]
+
+
+def test_traces_cte_nested_derived_table_and_window_dependencies():
+    target = parse_create_table("CREATE TABLE totals (running_total DECIMAL)", "postgres")
+
+    result = derive_column_lineage(
+        """
+        WITH base AS (
+            SELECT region, amount
+            FROM orders
         )
+        SELECT SUM(amount) OVER (PARTITION BY region) AS running_total
+        FROM (
+            SELECT region, amount
+            FROM base
+        ) AS nested
+        """,
+        {"orders": ("region", "amount")},
+        target,
+        "postgres",
+    )
+
+    assert {(source.table, source.column) for source in result.columns[0].source_columns} == {
+        ("orders", "amount"),
+        ("orders", "region"),
+    }
+    assert result.columns[0].is_direct is False
+
+
+def test_traces_union_all_to_both_source_tables():
+    target = parse_create_table("CREATE TABLE combined (amount DECIMAL)", "postgres")
+
+    result = derive_column_lineage(
+        "SELECT amount FROM first_source UNION ALL SELECT amount FROM second_source",
+        {"first_source": ("amount",), "second_source": ("amount",)},
+        target,
+        "postgres",
+    )
+
+    assert {(source.table, source.column) for source in result.columns[0].source_columns} == {
+        ("first_source", "amount"),
+        ("second_source", "amount"),
+    }
+    assert result.columns[0].is_direct is True
+
+
+def test_traces_recursive_cte_to_base_table():
+    target = parse_create_table("CREATE TABLE ids (id INTEGER)", "postgres")
+
+    result = derive_column_lineage(
+        """
+        WITH RECURSIVE walk AS (
+            SELECT id, parent_id FROM nodes WHERE parent_id IS NULL
+            UNION ALL
+            SELECT n.id, n.parent_id
+            FROM nodes AS n
+            JOIN walk AS previous ON n.parent_id = previous.id
+        )
+        SELECT id FROM walk
+        """,
+        {"nodes": ("id", "parent_id")},
+        target,
+        "postgres",
+    )
+
+    assert [(source.table, source.column) for source in result.columns[0].source_columns] == [
+        ("nodes", "id")
+    ]
+
+
+def test_maps_insert_select_using_insert_target_column_order():
+    target = parse_create_table(
+        "CREATE TABLE report (id INTEGER, total DECIMAL)",
+        "postgres",
+    )
+
+    result = derive_column_lineage(
+        "INSERT INTO report (total, id) SELECT amount, id FROM source_table",
+        {"source_table": ("id", "amount")},
+        target,
+        "postgres",
+    )
+
+    assert [mapping.target_column for mapping in result.columns] == ["total", "id"]
+    assert [(source.table, source.column) for source in result.columns[0].source_columns] == [
+        ("source_table", "amount")
+    ]
+    assert [(source.table, source.column) for source in result.columns[1].source_columns] == [
+        ("source_table", "id")
+    ]
+
+
+def test_traces_create_view_as_select():
+    target = parse_create_table("CREATE TABLE customer_ids (customer_id INTEGER)", "postgres")
+
+    result = derive_column_lineage(
+        "CREATE VIEW customer_ids AS SELECT customer_id FROM customers",
+        {"customers": ("customer_id",)},
+        target,
+        "postgres",
+    )
+
+    assert [(source.table, source.column) for source in result.columns[0].source_columns] == [
+        ("customers", "customer_id")
+    ]
