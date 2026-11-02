@@ -1,0 +1,94 @@
+{
+  "eventType": "COMPLETE",
+  "eventTime": "2026-01-01T00:00:00Z",
+  "producer": "https://github.com/OpenLineage/OpenLineage",
+  "schemaURL": "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunEvent",
+  "run": {
+    "runId": "00000000-0000-4000-8000-000000000001",
+    "facets": {}
+  },
+  "job": {
+    "namespace": "demo.local",
+    "name": "sql-column-lineage",
+    "facets": {}
+  },
+  "inputs": [
+    {
+      "namespace": "demo.local",
+      "name": "raw.customers",
+      "facets": {},
+      "inputFacets": {}
+    },
+    {
+      "namespace": "demo.local",
+      "name": "raw.orders",
+      "facets": {},
+      "inputFacets": {}
+    }
+  ],
+  "outputs": [
+    {
+      "namespace": "demo.local",
+      "name": "mart.customer_summary",
+      "facets": {
+        "columnLineage": {
+          "_producer": "https://github.com/OpenLineage/OpenLineage",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-0-0/ColumnLineageDatasetFacet.json#/$defs/ColumnLineageDatasetFacet",
+          "fields": {
+            "customer_id": {
+              "inputFields": [
+                {
+                  "namespace": "demo.local",
+                  "name": "raw.customers",
+                  "field": "customer_id",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "description": "c.customer_id"
+                    }
+                  ]
+                }
+              ],
+              "transformationDescription": "c.customer_id",
+              "transformationType": "IDENTITY"
+            },
+            "region": {
+              "inputFields": [
+                {
+                  "namespace": "demo.local",
+                  "name": "raw.customers",
+                  "field": "region",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "description": "c.region"
+                    }
+                  ]
+                }
+              ],
+              "transformationDescription": "c.region",
+              "transformationType": "IDENTITY"
+            },
+            "lifetime_value": {
+              "inputFields": [
+                {
+                  "namespace": "demo.local",
+                  "name": "raw.orders",
+                  "field": "amount",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "description": "SUM(o.amount)"
+                    }
+                  ]
+                }
+              ],
+              "transformationDescription": "SUM(o.amount)"
+            }
+          }
+        }
+      },
+      "outputFacets": {}
+    }
+  ]
+}
